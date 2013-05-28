@@ -1189,6 +1189,16 @@ struct load_weight {
 	unsigned long weight, inv_weight;
 };
 
+struct sched_avg {
+	/*
+	 * These sums represent an infinite geometric series and so are bound
+	 * above by 1024/(1-y).  Thus we only need a u32 to store them for for all
+	 * choices of y < 1-2^(-32)*1024.
+	 */
+	u32 runnable_avg_sum, runnable_avg_period;
+	u64 last_runnable_update;
+};
+
 /*
  * CFS stats for a schedulable entity (task, task-group etc)
  *
@@ -1264,6 +1274,9 @@ struct sched_entity {
 #endif
 	/* reserved for Red Hat */
 	unsigned long 		rh_reserved;
+#ifdef CONFIG_SMP
+	struct sched_avg	avg;
+#endif
 };
 
 struct sched_rt_entity {

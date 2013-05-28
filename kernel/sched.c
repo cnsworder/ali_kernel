@@ -2687,6 +2687,11 @@ static void __sched_fork(struct task_struct *p)
 	p->se.prev_sum_exec_runtime	= 0;
 	p->se.nr_migrations		= 0;
 
+#ifdef CONFIG_SMP
+	p->se.avg.runnable_avg_period = 0;
+	p->se.avg.runnable_avg_sum = 0;
+#endif
+
 #ifdef CONFIG_SCHEDSTATS
 	p->se.wait_start			= 0;
 	p->se.wait_max				= 0;
