@@ -817,6 +817,7 @@ struct rq {
 	/* BKL stats */
 	unsigned int bkl_count;
 #endif
+	struct sched_avg avg;
 };
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
@@ -5160,6 +5161,8 @@ static void idle_balance(int this_cpu, struct rq *this_rq)
 
 	if (this_rq->avg_idle < sysctl_sched_migration_cost)
 		return;
+
+	update_rq_runnable_avg(this_rq, 1);
 
 	spin_unlock(&this_rq->lock);
 	update_shares(this_cpu);

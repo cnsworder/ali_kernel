@@ -977,8 +977,14 @@ static inline void update_entity_load_avg(struct sched_entity *se)
 	__update_entity_runnable_avg(rq_of(cfs_rq_of(se))->clock_task, &se->avg,
 				     se->on_rq);
 }
+
+static inline void update_rq_runnable_avg(struct rq *rq, int runnable)
+{
+	__update_entity_runnable_avg(rq->clock_task, &rq->avg, runnable);
+}
 #else
 static inline void update_entity_load_avg(struct sched_entity *se) {}
+static inline void update_rq_runnable_avg(struct rq *rq, int runnable) {}
 #endif
 
 static void enqueue_sleeper(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -2060,6 +2066,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
        }
 
 	if (!se) {
+		update_rq_runnable_avg(rq, rq->nr_running);
 		inc_nr_running(rq);
 		update_cpuacct_nr(p, cpu_of(rq), 0, 1);
 	}
@@ -2120,6 +2127,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!se) {
 		dec_nr_running(rq);
+		update_rq_runnable_avg(rq, 1);
 		update_cpuacct_nr(p, cpu_of(rq), 0, -1);
 	}
 	hrtick_update(rq);
@@ -2986,6 +2994,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 		cfs_rq = cfs_rq_of(se);
 		entity_tick(cfs_rq, se, queued);
 	}
+	update_rq_runnable_avg(rq, 1);
 }
 
 /*
