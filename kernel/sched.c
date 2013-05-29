@@ -463,7 +463,10 @@ struct cfs_rq {
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
 	 */
-	u64 runnable_load_avg;
+	u64 runnable_load_avg, blocked_load_avg;
+	atomic64_t decay_counter;
+	u64 last_decay;
+
 #endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	struct rq *rq;	/* cpu runqueue to which this cfs_rq is attached */
@@ -10527,6 +10530,9 @@ static void init_cfs_rq(struct cfs_rq *cfs_rq, struct rq *rq)
 	cfs_rq->load_stamp = 1;
 #endif
 	cfs_rq->min_vruntime = (u64)(-(1LL << 20));
+#if defined(CONFIG_FAIR_GROUP_SCHED) && defined(CONFIG_SMP)
+	atomic64_set(&cfs_rq->decay_counter, 1);
+#endif
 }
 
 static void init_rt_rq(struct rt_rq *rt_rq, struct rq *rq)
