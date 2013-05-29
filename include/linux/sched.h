@@ -1130,6 +1130,8 @@ struct sched_class {
 #else
 	int  (*select_task_rq)(struct task_struct *p, int sd_flag, int flags);
 #endif
+	void (*migrate_task_rq)(struct task_struct *p, int next_cpu);
+
 	unsigned long (*load_balance) (struct rq *this_rq, int this_cpu,
 			struct rq *busiest, unsigned long max_load_move,
 			struct sched_domain *sd, enum cpu_idle_type idle,
