@@ -5174,7 +5174,7 @@ static void idle_balance(int this_cpu, struct rq *this_rq)
 	update_rq_runnable_avg(this_rq, 1);
 
 	spin_unlock(&this_rq->lock);
-	update_shares(this_cpu);
+	update_blocked_averages(this_cpu);
 	spin_lock(&this_rq->lock);
 
 	for_each_domain(this_cpu, sd) {
@@ -5523,7 +5523,7 @@ static void rebalance_domains(int cpu, enum cpu_idle_type idle)
 	int update_next_balance = 0;
 	int need_serialize;
 
-	update_shares(cpu);
+	update_blocked_averages(cpu);
 
 	for_each_domain(cpu, sd) {
 		if (!(sd->flags & SD_LOAD_BALANCE))

@@ -3037,20 +3037,16 @@ __load_balance_fair(struct rq *this_rq, int this_cpu, struct rq *busiest,
 /*
  * update tg->load_weight by folding this cpu's load_avg
  */
-static int update_shares_cpu(struct task_group *tg, int cpu)
+static void __update_blocked_averages_cpu(struct task_group *tg, int cpu)
 {
-	struct sched_entity *se;
-	struct cfs_rq *cfs_rq;
-	unsigned long flags;
-	struct rq *rq;
 
-	rq = cpu_rq(cpu);
-	se = tg->se[cpu];
-	cfs_rq = tg->cfs_rq[cpu];
+	struct sched_entity *se = tg->se[cpu];
+	struct cfs_rq *cfs_rq = tg->cfs_rq[cpu];
 
-	spin_lock_irqsave(&rq->lock, flags);
+	/* throttled entities do not contribute to load */
+	if (throttled_hierarchy(cfs_rq))
+		return;
 
-	update_rq_clock(rq);
 	update_cfs_rq_blocked_load(cfs_rq, 1);
 
 	if (se) {
@@ -3067,28 +3063,29 @@ static int update_shares_cpu(struct task_group *tg, int cpu)
 		if (!se->avg.runnable_avg_sum && !cfs_rq->nr_running)
 			list_del_leaf_cfs_rq(cfs_rq);
 	} else {
+		struct rq *rq = rq_of(cfs_rq);
 		update_rq_runnable_avg(rq, rq->nr_running);
 	}
- 
-	spin_unlock_irqrestore(&rq->lock, flags);
-
-	return 0;
 }
 
-static void update_shares(int cpu)
+static void update_blocked_averages(int cpu)
 {
-	struct cfs_rq *cfs_rq;
 	struct rq *rq = cpu_rq(cpu);
+	struct cfs_rq *cfs_rq;
+	unsigned long flags;
 
-	rcu_read_lock();
+	spin_lock_irqsave(&rq->lock, flags);
+	update_rq_clock(rq);
 	for_each_leaf_cfs_rq(rq, cfs_rq) {
-		/* throttled entities do not contribute to load */
-		if (throttled_hierarchy(cfs_rq))
-			continue;
-
-		update_shares_cpu(cfs_rq->tg, cpu);
+		/*
+		 * Note: We may want to consider periodically releasing
+		 * rq->lock about these updates so that creating many task
+		 * groups does not result in continually extending hold time.
+		 */
+		__update_blocked_averages_cpu(cfs_rq->tg, rq->cpu);
 	}
-	rcu_read_unlock();
+
+	spin_unlock_irqrestore(&rq->lock, flags);
 }
 
 static unsigned long
@@ -3139,7 +3136,7 @@ load_balance_fair(struct rq *this_rq, int this_cpu, struct rq *busiest,
 	return max_load_move - rem_load_move;
 }
 #else
-static inline void update_shares(int cpu)
+static inline void update_blocked_averages(int cpu)
 {
 }
 
