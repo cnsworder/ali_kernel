@@ -1130,6 +1130,8 @@ struct sched_class {
 #else
 	int  (*select_task_rq)(struct task_struct *p, int sd_flag, int flags);
 #endif
+	void (*migrate_task_rq)(struct task_struct *p, int next_cpu);
+
 	unsigned long (*load_balance) (struct rq *this_rq, int this_cpu,
 			struct rq *busiest, unsigned long max_load_move,
 			struct sched_domain *sd, enum cpu_idle_type idle,
@@ -1187,6 +1189,18 @@ struct sched_class {
 
 struct load_weight {
 	unsigned long weight, inv_weight;
+};
+
+struct sched_avg {
+	/*
+	 * These sums represent an infinite geometric series and so are bound
+	 * above by 1024/(1-y).  Thus we only need a u32 to store them for for all
+	 * choices of y < 1-2^(-32)*1024.
+	 */
+	u32 runnable_avg_sum, runnable_avg_period;
+	u64 last_runnable_update;
+	s64 decay_count;
+	unsigned long load_avg_contrib;
 };
 
 /*
@@ -1264,6 +1278,9 @@ struct sched_entity {
 #endif
 	/* reserved for Red Hat */
 	unsigned long 		rh_reserved;
+#ifdef CONFIG_SMP
+	struct sched_avg	avg;
+#endif
 };
 
 struct sched_rt_entity {

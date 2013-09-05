@@ -297,6 +297,8 @@ struct task_group {
 	unsigned long shares;
 #ifndef __GENKSYMS__
 	atomic_t load_weight;
+	atomic64_t load_avg;
+	atomic_t runnable_avg;
 #endif
 #endif
 
@@ -456,6 +458,30 @@ struct cfs_rq {
 
 	unsigned int nr_spread_over;
 
+#ifdef CONFIG_SMP
+	/*
+	 * CFS Load tracking
+	 * Under CFS, load is tracked on a per-entity basis and aggregated up.
+	 * This allows for the description of both thread and group usage (in
+	 * the FAIR_GROUP_SCHED case).
+	 */
+	u64 runnable_load_avg, blocked_load_avg;
+	atomic64_t decay_counter, removed_load;
+	u64 last_decay;
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	u32 tg_runnable_contrib;
+	u64 tg_load_contrib;
+#endif /* CONFIG_FAIR_GROUP_SCHED */
+
+	/*
+	 *   h_load = weight * f(tg)
+	 *
+	 * Where f(tg) is the recursive weight fraction assigned to
+	 * this group.
+	 */
+	unsigned long h_load;
+#endif /* CONFIG_SMP */
+
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	struct rq *rq;	/* cpu runqueue to which this cfs_rq is attached */
 
@@ -479,27 +505,7 @@ struct cfs_rq {
 	 */
 	unsigned long task_weight;
 
-	/*
-	 *   h_load = weight * f(tg)
-	 *
-	 * Where f(tg) is the recursive weight fraction assigned to
-	 * this group.
-	 */
-	unsigned long h_load;
-#ifndef __GENKSYMS__
-	/*
-	 * Maintaining per-cpu shares distribution for group scheduling
-	 *
-	 * load_stamp is the last time we updated the load average
-	 * load_last is the last time we updated the load average and saw load
-	 * load_unacc_exec_time is currently unaccounted execution time
-	 */
-	u64 load_avg;
-	u64 load_period;
-	u64 load_stamp, load_last, load_unacc_exec_time;
-
-	unsigned long load_contribution;
-#else
+#ifdef __GENKSYMS__
 	/*
 	 * this cpu's part of tg->shares
 	 */
@@ -517,7 +523,8 @@ struct cfs_rq {
 	u64 runtime_expires;
 	s64 runtime_remaining;
 
-	u64 throttled_timestamp;
+	u64 throttled_clock, throttled_clock_task;
+	u64 throttled_clock_task_time;
 	int throttled, throttle_count;
 	struct list_head throttled_list;
 #endif
@@ -817,6 +824,7 @@ struct rq {
 	/* BKL stats */
 	unsigned int bkl_count;
 #endif
+	struct sched_avg avg;
 };
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
@@ -2248,6 +2256,8 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 	trace_sched_migrate_task(p, new_cpu);
 
 	if (old_cpu != new_cpu) {
+		if (p->sched_class->migrate_task_rq)
+			p->sched_class->migrate_task_rq(p, new_cpu);
 		p->se.nr_migrations++;
 		perf_sw_event(PERF_COUNT_SW_CPU_MIGRATIONS,
 				     1, 1, NULL, 0);
@@ -2686,6 +2696,11 @@ static void __sched_fork(struct task_struct *p)
 	p->se.sum_exec_runtime		= 0;
 	p->se.prev_sum_exec_runtime	= 0;
 	p->se.nr_migrations		= 0;
+
+#ifdef CONFIG_SMP
+	p->se.avg.runnable_avg_period = 0;
+	p->se.avg.runnable_avg_sum = 0;
+#endif
 
 #ifdef CONFIG_SCHEDSTATS
 	p->se.wait_start			= 0;
@@ -5156,8 +5171,10 @@ static void idle_balance(int this_cpu, struct rq *this_rq)
 	if (this_rq->avg_idle < sysctl_sched_migration_cost)
 		return;
 
+	update_rq_runnable_avg(this_rq, 1);
+
 	spin_unlock(&this_rq->lock);
-	update_shares(this_cpu);
+	update_blocked_averages(this_cpu);
 	spin_lock(&this_rq->lock);
 
 	for_each_domain(this_cpu, sd) {
@@ -5506,7 +5523,7 @@ static void rebalance_domains(int cpu, enum cpu_idle_type idle)
 	int update_next_balance = 0;
 	int need_serialize;
 
-	update_shares(cpu);
+	update_blocked_averages(cpu);
 
 	for_each_domain(cpu, sd) {
 		if (!(sd->flags & SD_LOAD_BALANCE))
@@ -10506,10 +10523,11 @@ static void init_cfs_rq(struct cfs_rq *cfs_rq, struct rq *rq)
 	INIT_LIST_HEAD(&cfs_rq->tasks);
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	cfs_rq->rq = rq;
-	/* allow initial update_cfs_load() to truncate */
-	cfs_rq->load_stamp = 1;
 #endif
 	cfs_rq->min_vruntime = (u64)(-(1LL << 20));
+#if defined(CONFIG_FAIR_GROUP_SCHED) && defined(CONFIG_SMP)
+	atomic64_set(&cfs_rq->decay_counter, 1);
+#endif
 }
 
 static void init_rt_rq(struct rt_rq *rt_rq, struct rq *rq)
@@ -11297,8 +11315,11 @@ int sched_group_set_shares(struct task_group *tg, unsigned long shares)
 		se = tg->se[i];
 		/* Propagate contribution to hierarchy */
 		spin_lock_irqsave(&rq->lock, flags);
-		for_each_sched_entity(se)
+		for_each_sched_entity(se){
 			update_cfs_shares(group_cfs_rq(se));
+			/* update contribution to parent */
+			update_entity_load_avg(se, 1);
+		}
 		spin_unlock_irqrestore(&rq->lock, flags);
 	}
 
