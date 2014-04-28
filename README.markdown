@@ -5,6 +5,12 @@ Alibaba Kernel is originated by [Alibaba](http://en.wikipedia.org/wiki/Alibaba_G
 For more information and documentation, please refer to
 http://kernel.taobao.org
 
+BRANCH EXPLANATION
+============
+
+master branch is the source codes we are using in our production system.
+dev branch is where we are doing kernel development.
+So you can say that master is much much stable than the dev branch. :)
 Features
 ========
 
@@ -18,3 +24,7 @@ Features
 * Perf jit to enable you use perf to trace a java program.
 * Enable different memory management policy.
 * ...
+
+RPMS
+========
+If you want to build an kernel rpm for your server, please refer to https://github.com/alibaba/ali_kernel_rpm.
