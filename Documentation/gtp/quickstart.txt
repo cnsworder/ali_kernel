@@ -138,7 +138,7 @@ vmlinux-2.6.35-30-generic
 (gdb) tstop
 (gdb) tfind
 Found trace frame 0, tracepoint 1
-#0  vfs_readdir (file=0x0, filler=0x163d8ae3, buf=0x18c0) at /build/buildd/linux-2.6.35/fs/readdir.c:23
+#0  vfs_readdir (file=0x0, filler=0x163d8ae3, buf=0x18c0) at readdir.c:23
 23      {
 
 

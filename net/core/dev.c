@@ -1375,7 +1375,7 @@ static inline void net_timestamp(struct sk_buff *skb)
  *
  * return values:
  *	NET_RX_SUCCESS	(no congestion)
- *	NET_RX_DROP     (packet was dropped)
+ *	NET_RX_DROP     (packet was dropped, but freed)
  *
  * dev_forward_skb can be used for injecting an skb from the
  * start_xmit function of one device into the receive queue
@@ -1389,12 +1389,12 @@ int dev_forward_skb(struct net_device *dev, struct sk_buff *skb)
 {
 	skb_orphan(skb);
 
-	if (!(dev->flags & IFF_UP))
-		return NET_RX_DROP;
 
-	if (skb->len > (dev->mtu + dev->hard_header_len))
+	if (!(dev->flags & IFF_UP) ||
+	    (skb->len > (dev->mtu + dev->hard_header_len))) {
+		kfree_skb(skb);
 		return NET_RX_DROP;
-
+	}
 	skb_dst_drop(skb);
 	skb->tstamp.tv64 = 0;
 	skb->pkt_type = PACKET_HOST;
@@ -1989,8 +1989,8 @@ static inline int get_xps_queue(struct net_device *dev, struct sk_buff *skb)
 	return queue_index;
 }
 
-static struct netdev_queue *dev_pick_tx(struct net_device *dev,
-					struct sk_buff *skb)
+struct netdev_queue *netdev_pick_tx(struct net_device *dev,
+				    struct sk_buff *skb)
 {
 	int queue_index;
 	const struct net_device_ops *ops = dev->netdev_ops;
@@ -2126,7 +2126,7 @@ gso:
 	 */
 	rcu_read_lock_bh();
 
-	txq = dev_pick_tx(dev, skb);
+	txq = netdev_pick_tx(dev, skb);
 	q = rcu_dereference(txq->qdisc);
 
 #ifdef CONFIG_NET_CLS_ACT
@@ -5365,8 +5365,17 @@ int register_netdevice(struct net_device *dev)
 	BUG_ON(!net);
 
 	if (net != &init_net && strcmp(dev->name, "lo") != 0) {
-		ret = -EPERM;
-		goto out;
+		/* Gives VLAN device the green light while still prevents
+ 		 * other kinds of net devices from being created */
+
+		struct rtnl_link_ops* sys_vlan_link_ops =
+			(void*)kallsyms_lookup_name("vlan_link_ops");
+
+		/* We don't care whether 8021q loaded or not now */
+		if (!sys_vlan_link_ops || dev->rtnl_link_ops != sys_vlan_link_ops) {
+			ret = -EPERM;
+			goto out;
+		}
 	}
 
 	spin_lock_init(&dev->addr_list_lock);
